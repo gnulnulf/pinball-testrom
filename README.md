@@ -6,7 +6,16 @@ Inspired by the work of Leon Borré I started my own testrom because I wanted so
 
 Burn the image to an 27256 or 28256 prom. 
 
-If you use a 28356 you need an adapter (28256 pin1 to socket pin27)
+If you use a 28256 you need an adapter (28256 pin1 to socket pin27)
+
+
+After poweron all PIA's PA,PB,CA2 and CB2 wil blink with the following patterns:
+ 00000000
+ 01010101
+ 11111111
+ 10101010
+
+The NMI ( diagnostic switch) triggers the memory test.
 
 ## assemble
 
