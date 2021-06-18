@@ -46,8 +46,8 @@
 	org	$8000
 	;db "0123456789012345"
 	db	"Williams SYS11  "
-INFO3:	db  "TESTROM   V1.0  12"
-INFO:	db  " !\"#$%&'()*+,-./012345 "
+INFO:	db  "TESTROM   V1.0  12"
+INFO3:	db  " !\"#$%&'()*+,-./012345 "
 
 INFO2:	db  "0123456789ABCDEFHH"
 	db  "arco@appeltaart."
