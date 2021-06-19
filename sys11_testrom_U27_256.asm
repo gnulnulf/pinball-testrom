@@ -43,6 +43,29 @@
 
 	;cpu 6800
 	; to fill eprom
+	
+	org $200
+
+
+; variables
+TEMP1	rmb 1
+TEMP2	rmb 1
+TEMPH	rmb 1
+TEMPL   rmb 1
+DISPLAYBUF1 rmb 16*2
+DISPLAYBUF2 rmb 16
+LINE1 rmb 16
+LINE2 rmb 16
+LINECNT rmb 1
+LAMPS rmb 8
+LAMPCNT rmb 1
+LOOPCOUNT1	rmb 1
+LOOPCOUNT2	rmb 1
+SOUNDINDEX	rmb 1
+ENDVARS
+    org $7fe
+ENDRAM rmb 1
+	
 	org	$8000
 	;db "0123456789012345"
 	db	"Williams SYS11  "
@@ -122,22 +145,7 @@ PIAU51DDRA 	equ PIAU51 + DDRA
 PIAU51DDRB 	equ PIAU51 + DDRB
 
 
-; variables
-TEMP1	equ	0
-TEMP2	equ 1
-TEMPH	equ 2
-TEMPL   equ 3
-DISPLAYBUF1 equ 4
-DISPLAYBUF2 equ DISPLAYBUF1 + 16*2 
-LINE1 equ DISPLAYBUF2 + 16 
-LINE2 equ LINE1 + 16 
-LINECNT equ LINE2 + 16
-LAMPS equ LINECNT + 1
-LAMPCNT equ LAMPS + 8
-LOOPCOUNT1	equ LAMPCNT +1
-LOOPCOUNT2	equ LOOPCOUNT1 +1
 
-ENDVARS equ LOOPCOUNT1 +1
 
 LAMPSNOT:
 		dc.b ~(1<<0)
@@ -477,7 +485,7 @@ INITVARS:
 	staa LAMPS+6
 	ldaa #127
 	staa LAMPS+7
-	rts
+	rts ;/INITVARS
 	
 CHAR14 MACRO index
 	ldaa LINE1 + index
@@ -504,7 +512,7 @@ $$xadda1:
 	ldaa 0,x
 	staa DISPLAYBUF1+(2*index)+1
 next	
-	ENDM
+	ENDM	;CHAR14
 
 CHAR7 MACRO index
 	ldaa LINE2 + index
@@ -521,7 +529,7 @@ $$xadda1:
 	ldaa 0,x
 	staa DISPLAYBUF2+index
 	
-	ENDM
+	ENDM	;/CHAR7
 
 
 PRINTLINES:
@@ -561,10 +569,6 @@ PRINTLINES:
 	rts
 	
 SHOWLAMPS:
-	;ldaa LAMPCNT
-
-
-
 	ldaa	#$04		;pia data
 	STAA	PIAU54CRA
 	STAA	PIAU54CRB
@@ -572,65 +576,23 @@ SHOWLAMPS:
 	; turn off lamps
 	ldaa	#$ff
 	staa PIAU54PDRA
-	
-	
+
+	ldx #LAMPS
+	ldab	#1
 	ldaa LAMPCNT
-	deca
-	cmpa #0
-	bgt	.row1
-	ldaa #1
-	ldab LAMPS
-	bra LAMP12
-
-.row1:
-	cmpa #1
-	bne	.row2
-	ldaa #2
-	ldab LAMPS+1
-	bra LAMP12
-.row2:
-	cmpa #2
-	bne	.row3
-	ldaa #4
-	ldab LAMPS+2
-	bra LAMP12
-.row3:
-	cmpa #3
-	bne	.row4
-	ldaa #8
-	ldab LAMPS+3
-	bra LAMP12
-.row4:
-	cmpa #4
-	bne	.row5
-	ldaa #16
-	ldab LAMPS+4
-	bra LAMP12
-.row5:
-	cmpa #5
-	bne	.row6
-	ldaa #32
-	ldab LAMPS+5
-	bra LAMP12
-.row6:
-	cmpa #6
-	bne	.row7
-	ldaa #64
-	ldab LAMPS+6
-	bra LAMP12
-.row7:
-	cmpa #7
-	bne	.rowfail
-	ldaa #128
-	ldab LAMPS+7
-	bra LAMP12
-.rowfail:
-	clr LAMPCNT
-
-
+.lampindex
+	tsta
+	beq .done
 	
-LAMP12:
-	staa PIAU54PDRB	;row
+	rolb
+	inx
+	deca
+	bra .lampindex
+.done
+	
+	stab PIAU54PDRB	;row
+
+	ldab	0,X
 	stab PIAU54PDRA	;data
 
 	ldaa LAMPCNT
@@ -639,14 +601,10 @@ LAMP12:
 	bne .notnull
 	ldaa #$8
 .notnull
-
-
 	staa LAMPCNT
-	
-	rts
+	rts		;/SHOWLAMPS
 
 DISPLAYIT:
-
 	ldaa	#$04
 	STAA	PIAU51CRA
 	STAA	PIAU41CRA
@@ -658,8 +616,14 @@ DISPLAYIT:
 	clr		PIAU51PDRB
 	
 	ldx	#DISPLAYBUF1
-	lda	LINECNT
+
+	; set row and leave other output bits
+	ldaa PIAU51PDRA
+	anda #$f0
+	adda LINECNT
 	staa PIAU51PDRA
+
+	lda	LINECNT
 .xadda:
 	inx
 	inx
@@ -761,6 +725,62 @@ COPYXLINE2:
 	ldaa	15,x
 	staa	LINE2+15
 	rts
+
+SOUNDB:
+	ldaa	PIAU10CRA
+	eora	#$8		;toggle CA2
+	;anda	#~$8		;clr CA2
+	;ora	#$8		;set CA2
+	
+	oraa	#$4 	;select pdr
+	staa	PIAU10CRA
+	
+	ldaa	PIAU42CRB
+	eora	#$8		;toggle CA2
+	;anda	#~$8		;clr CA2
+	;ora	#$8		;set CA2
+	
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRB
+	
+
+	stab	PIAU10PDRA
+	stab	PIAU42PDRB
+	stab	U28
+	stab	LAMPS+7
+
+	rts
+
+	ldaa	PIAU10CRA
+	eora	#$8		;toggle CA2
+	oraa	#$4 	;select pdr
+	staa	PIAU10CRA
+
+	ldaa	PIAU42CRB
+	eora	#$8		;toggle CA2
+	;anda	#~$8		;clr CA2
+	;ora	#$8		;set CA2
+	
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRB
+
+
+
+;	ldaa #$34
+;	staa	PIAU10CRA
+
+
+	rts	;SOUNDB
+	
+TOGGLEDIAG:
+	ldaa	PIAU51CRA
+	eora	#$8		;toggle CA2
+	oraa	#$4 	;select pdr
+	staa	PIAU51CRA
+	ldaa	PIAU51PDRA
+	eora	#(1<<4)	;toggle PA4
+	staa	PIAU51PDRA
+	rts	;/TOGGLEDIAG
 	
 ; #################################################3
 ; # START2
@@ -816,10 +836,22 @@ LOOPJE:
 
 	inc LOOPCOUNT2
 	ldaa LOOPCOUNT2
-	staa LAMPS+7
+	;staa LAMPS+7
 	cmpa #250
 	bne	.norol
 	clr LOOPCOUNT2
+	
+	;jsr TOGGLEDIAG
+	inc LOOPCOUNT1
+	ldaa LOOPCOUNT1
+	cmpa #20
+	bne	.norol2
+	clr LOOPCOUNT1
+	ldab	SOUNDINDEX
+	jsr SOUNDB
+	inc SOUNDINDEX
+
+.norol2
 
 	ldaa LAMPS
 	rola
@@ -846,6 +878,9 @@ LOOPJE:
 	ror LAMPS+5
 	;rol LAMPS+6
 	;ror LAMPS+7
+	
+
+	
 .norol
 	jsr SHOWLAMPS
 	jsr WAITX
