@@ -61,6 +61,7 @@ LAMPS rmb 8
 LAMPCNT rmb 1
 LOOPCOUNT1	rmb 1
 LOOPCOUNT2	rmb 1
+DUM1	rmb 1
 SOUNDINDEX	rmb 1
 ENDVARS
     org $7fe
@@ -442,6 +443,7 @@ INITVARS:
 	clr 0,X
 	dex
 	bne .loop
+	
 	lda #1
 	staa LAMPCNT
 	staa LINECNT
@@ -725,51 +727,102 @@ COPYXLINE2:
 	ldaa	15,x
 	staa	LINE2+15
 	rts
+	
+BGSOUNDRESET:
+	; strobe is U42 CB2
+	; low active
+	ldaa	PIAU42CRB
+	;eora	#$8		;toggle CA2
+	anda	#~$8		;clr CA2
+	;ora	#$8		;set CA2
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRB
 
+	; reset is U42 CA2
+	; low active
+	ldaa	PIAU42CRA
+	;eora	#$8		;toggle CA2
+	anda	#~$8		;clr CA2
+	;ora	#$8		;set CA2
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRA
+
+	; high, normal operation
+	ldaa	PIAU42CRA
+	;eora	#$8		;toggle CA2
+	;anda	#~$8		;clr CA2
+	ora	#$8		;set CA2
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRA
+	rts
+	
+BGSOUNDB:
+	
+	ldaa	PIAU42CRB
+	;eora	#$8		;toggle CB2
+	;anda	#~$8		;clr CB2
+	ora	#$8		;set CB2
+	
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRB
+	ldab	#$55
+	stab	PIAU42PDRB
+
+	ldaa	PIAU42CRB
+	;eora	#$8		;toggle CA2
+	anda	#~$8		;clr CA2
+	;ora	#$8		;set CA2
+	
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRB
+	nop
+	nop
+	nop
+	nop
+	nop
+	ldaa	PIAU42CRB
+	;eora	#$8		;toggle CA2
+	;anda	#~$8		;clr CA2
+	ora	#$8		;set CA2
+	
+	oraa	#$4 	;select pdr
+	staa	PIAU42CRB
+	;staa LAMPS+1
+	jsr TOGGLEDIAG
+	rts
+	
+	
 SOUNDB:
 	ldaa	PIAU10CRA
-	eora	#$8		;toggle CA2
+	;eora	#$8		;toggle CA2
 	;anda	#~$8		;clr CA2
-	;ora	#$8		;set CA2
-	
+	ora	#$8		;set CA2
 	oraa	#$4 	;select pdr
 	staa	PIAU10CRA
-	
-	ldaa	PIAU42CRB
-	eora	#$8		;toggle CA2
-	;anda	#~$8		;clr CA2
-	;ora	#$8		;set CA2
-	
-	oraa	#$4 	;select pdr
-	staa	PIAU42CRB
-	
 
+	; sound data
 	stab	PIAU10PDRA
-	stab	PIAU42PDRB
-	stab	U28
-	stab	LAMPS+7
-
-	rts
 
 	ldaa	PIAU10CRA
-	eora	#$8		;toggle CA2
-	oraa	#$4 	;select pdr
-	staa	PIAU10CRA
-
-	ldaa	PIAU42CRB
-	eora	#$8		;toggle CA2
-	;anda	#~$8		;clr CA2
-	;ora	#$8		;set CA2
+	;eora	#$8		;toggle Cx2
+	anda	#~$8		;clr Cx2
+	;ora	#$8		;set Cx2
 	
 	oraa	#$4 	;select pdr
-	staa	PIAU42CRB
-
-
-
-;	ldaa #$34
-;	staa	PIAU10CRA
-
-
+	staa	PIAU10CRA
+	nop
+	nop
+	nop
+	nop
+	nop
+	
+	ldaa	PIAU10CRA
+	;eora	#$8		;toggle Cx2
+	;anda	#~$8		;clr Cx2
+	ora	#$8		;set Cx2
+	oraa	#$4 	;select pdr
+	staa	PIAU10CRA
+	;staa LAMPS+2
 	rts	;SOUNDB
 	
 TOGGLEDIAG:
@@ -798,7 +851,19 @@ START2:
 	jsr PRINTLINES
 	clr LOOPCOUNT1
 	clr LOOPCOUNT2
-	
+
+	ldaa #$0
+	staa SOUNDINDEX
+
+	jsr BGSOUNDRESET
+	ldab	#10
+DELAY2c:
+	LDX		#62500
+DELAY2b:	
+		DEX
+		BNE DELAY2b
+	decb
+	bne DELAY2c
 LOOPJE:
 ;	ldab #$f
 ;DIAGLOOP:;
@@ -813,7 +878,6 @@ LOOPJE:
 	; x=b
 	
 	
-	
 ;	jsr DIAGON
 ;	jsr ALLON
 ;	jsr PIADATA
@@ -825,14 +889,17 @@ LOOPJE:
 ;	staa PIAU41PDRB
 
 ;	stab PIAU51PDRA
-	jsr DISPLAYIT
-	
+
 	;rol LAMPS
 	;ror LAMPS+1
 	inc LOOPCOUNT2
 	ldaa LOOPCOUNT2
-	staa LAMPS+6
+	;staa LAMPS+6
 
+	ldab	SOUNDINDEX
+	;stab LAMPS+6
+	jsr SOUNDB
+	
 
 	inc LOOPCOUNT2
 	ldaa LOOPCOUNT2
@@ -847,6 +914,8 @@ LOOPJE:
 	cmpa #20
 	bne	.norol2
 	clr LOOPCOUNT1
+	ldab	SOUNDINDEX
+	jsr BGSOUNDB
 	ldab	SOUNDINDEX
 	jsr SOUNDB
 	inc SOUNDINDEX
@@ -882,6 +951,8 @@ LOOPJE:
 
 	
 .norol
+
+	jsr DISPLAYIT
 	jsr SHOWLAMPS
 	jsr WAITX
 	
