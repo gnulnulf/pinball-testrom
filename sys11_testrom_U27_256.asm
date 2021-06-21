@@ -487,6 +487,9 @@ INITVARS:
 	staa LAMPS+6
 	ldaa #127
 	staa LAMPS+7
+	
+	
+	cli		; enable interrupt
 	rts ;/INITVARS
 	
 CHAR14 MACRO index
@@ -952,8 +955,8 @@ LOOPJE:
 	
 .norol
 
-	jsr DISPLAYIT
-	jsr SHOWLAMPS
+;	jsr DISPLAYIT
+;	jsr SHOWLAMPS
 	jsr WAITX
 	
 ;	clr PIAU41PDRA
@@ -1365,10 +1368,18 @@ MEMTESTAA:
 ; normal operation
 	jmp	START
 
+IRQVEC:
+	jsr DISPLAYIT
+	jsr SHOWLAMPS
+	rti
+	
+SWIVEC:
+	rti
+
 
 ; VECTOR table
-	.org $FFFC
-; NMI vector
-	dw 	NMI 
-; reset vector
-	dw 	START2
+	.org $FFF8
+	dw	IRQVEC
+	dw	SWIVEC
+	dw 	NMI ;NMI Vector
+	dw 	START2	; reset vector
