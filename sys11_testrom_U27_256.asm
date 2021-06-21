@@ -57,6 +57,7 @@ DISPLAYBUF2 rmb 16
 LINE1 rmb 16
 LINE2 rmb 16
 LINECNT rmb 1
+		rmb 16
 LAMPS rmb 8
 LAMPCNT rmb 1
 LOOPCOUNT1	rmb 1
@@ -80,6 +81,53 @@ INFO2:	db  "0123456789ABCDEFHH"
 	.include font.asm
 DISPLAYDATA:
 		db "ABCDEFGHIJKLMNOPQRSTU"
+		
+		
+SOUNDDATA1:
+	dw	$9063,$39ff,$ff7e,$9ce8,$7e9c,$fc7e,$9d23,$7e9d
+	dw	$2e39,$ffff,$39ff,$ff7e,$98ba,$7e8c,$0339,$ffff
+	dw	$39ff,$ff7e,$9ec1,$7e9e,$6539,$ffff,$39ff,$ff7e
+	dw	$840c,$39ff,$ff39,$ffff,$39ff,$ff39,$ffff,$7e9e
+	dw	$c67e,$9d4d,$7e8c,$007e,$8c06,$7e9d,$5739,$ffff
+	dw	$39ff,$ff39,$ffff,$7e9e,$dd7e,$9f2c,$7ec5,$017e
+	dw	$4003,$7e40,$007e,$9d1b,$39ff,$ff39,$ffff,$ffff
+	dw	$6906,$3f06,$3706,$400f,$8ec1,$0d7e,$d66b,$8634
+	dw	$b734,$018e,$c118,$7ec2,$fa7f,$0082,$bdc3,$61bd
+	dw	$c3bf,$8ec1,$277e,$d66b,$bdc4,$9abd,$c4d4,$9682
+	dw	$26e1,$bddf,$d97e,$c501,$0f8e,$c13e,$7ed6,$6b86
+	dw	$34b7,$3401,$0926,$fd8e,$c14c,$7ec2,$fa7f,$0082
+	dw	$bdc3,$61bd,$c3ac,$bdc3,$bf8e,$c15e,$7ed6,$6bbd
+	dw	$c49a,$bdc4,$d496,$8226,$de7e,$c501,$9783,$df80
+	dw	$d782,$d700,$9f86,$0f8e,$c17c,$7ed6,$6b17,$ce00
+	dw	$3cff,$2800,$ce92,$7c09,$26fd,$ce70,$3cff,$2800
+	dw	$ce92,$7c09,$26fd,$4a26,$e58e,$0046,$cec2,$5217
+	dw	$4848,$4810,$0808,$4a26,$fb86,$717f,$2c02,$7f2c
+	dw	$00b7,$2800,$a600,$b72c,$02a6,$01b7,$2c00,$0808
+	dw	$86a6,$4a26,$fdb6,$2800,$4c85,$0726,$de4c,$cec2
+	dw	$527f,$2c02,$7f2c,$00b7,$2800,$a600,$b72c,$02a6
+	dw	$01b7,$2c00,$0808,$86a6,$4a26,$fdb6,$2800,$4c85
+	dw	$0726,$de34,$308c,$003f,$272d,$8c00,$3827,$288c
+	dw	$0031,$2723,$8c00,$2a27,$1e8c,$0023,$2719,$8c00
+	dw	$1c27,$148c,$0015,$270f,$8c00,$0e27,$0a8c,$0007
+	dw	$2705,$8c00,$0026,$177f,$2c02,$7f2c,$0086,$70b7
+	dw	$2800,$ce80,$0009,$26fd,$308c,$0000,$2703,$7ec1
+	dw	$9cc1,$0126,$037e,$c176,$9e86,$9683,$d682,$de80
+	dw	$0d39,$7100,$7708,$0922,$3800,$3e00,$7318,$7900
+	dw	$3e00,$5b08,$6d08,$0000,$7318,$7708,$3605,$3605
+	dw	$7900,$3685,$7308,$7318,$3f00,$01a2,$3e00,$6d08
+	dw	$0600,$0000,$7308,$0922,$7708,$3e00,$4f08,$7f08
+	dw	$0000,$7308,$0922,$7708,$3e00,$6608,$0600,$0000
+	dw	$7308,$0922,$7708,$3e00,$6608,$5b08,$0000,$7308
+	dw	$0922,$7708,$3e00,$6d08,$6608,$0000,$7308,$0922
+	dw	$7708,$3e00,$0600,$3f00,$0000,$7308,$0922,$7708
+	dw	$0000,$0000,$0000,$0000,$0922,$7318,$3f10,$3e00
+	dw	$5b08,$0700,$0000,$7318,$3f00,$3605,$3e00,$5b08
+	dw	$7d08,$0000,$7318,$3f00,$3605,$b606,$9af6,$069b
+ENDSOUNDDATA:
+
+
+
+
 	org $A000
 	
 
@@ -582,11 +630,14 @@ SHOWLAMPS:
 	ldaa	#$ff
 	staa PIAU54PDRA
 
+
 	ldx #LAMPS
 	ldab	#1
 	ldaa LAMPCNT
+	deca
+
 .lampindex
-	tsta
+	cmpa	#0
 	beq .done
 	
 	rolb
@@ -594,6 +645,7 @@ SHOWLAMPS:
 	deca
 	bra .lampindex
 .done
+	
 	
 	stab PIAU54PDRB	;row
 
@@ -733,12 +785,13 @@ COPYXLINE2:
 	
 BGSOUNDRESET:
 	; strobe is U42 CB2
-	; low active
+	; low active, so set high
 	ldaa	PIAU42CRB
 	;eora	#$8		;toggle CA2
-	anda	#~$8		;clr CA2
-	;ora	#$8		;set CA2
+	;anda	#~$8		;clr CA2
+	oraa	#$8		;set CA2
 	oraa	#$4 	;select pdr
+	ldaa #$3c
 	staa	PIAU42CRB
 
 	; reset is U42 CA2
@@ -748,14 +801,22 @@ BGSOUNDRESET:
 	anda	#~$8		;clr CA2
 	;ora	#$8		;set CA2
 	oraa	#$4 	;select pdr
+	ldaa #$34
 	staa	PIAU42CRA
+
+	;leave reset low for a short while
+	LDX		#2500
+.delay:	
+	DEX
+	BNE .delay
 
 	; high, normal operation
 	ldaa	PIAU42CRA
 	;eora	#$8		;toggle CA2
 	;anda	#~$8		;clr CA2
-	ora	#$8		;set CA2
+	oraa	#$8		;set CA2
 	oraa	#$4 	;select pdr
+	ldaa #$3c
 	staa	PIAU42CRA
 	rts
 	
@@ -764,31 +825,30 @@ BGSOUNDB:
 	ldaa	PIAU42CRB
 	;eora	#$8		;toggle CB2
 	;anda	#~$8		;clr CB2
-	ora	#$8		;set CB2
+	oraa	#$8		;set CB2
 	
 	oraa	#$4 	;select pdr
+	ldaa #$3c
 	staa	PIAU42CRB
-	ldab	#$55
+;	ldab	#$55
 	stab	PIAU42PDRB
 
 	ldaa	PIAU42CRB
 	;eora	#$8		;toggle CA2
 	anda	#~$8		;clr CA2
 	;ora	#$8		;set CA2
-	
 	oraa	#$4 	;select pdr
+	ldaa #$34
 	staa	PIAU42CRB
-	nop
-	nop
-	nop
-	nop
-	nop
+
+		
+		
 	ldaa	PIAU42CRB
 	;eora	#$8		;toggle CA2
 	;anda	#~$8		;clr CA2
-	ora	#$8		;set CA2
-	
+	oraa	#$8		;set CA2
 	oraa	#$4 	;select pdr
+	ldaa #$3c
 	staa	PIAU42CRB
 	;staa LAMPS+1
 	jsr TOGGLEDIAG
@@ -799,8 +859,9 @@ SOUNDB:
 	ldaa	PIAU10CRA
 	;eora	#$8		;toggle CA2
 	;anda	#~$8		;clr CA2
-	ora	#$8		;set CA2
+	oraa	#$8		;set CA2
 	oraa	#$4 	;select pdr
+	ldaa #$3c
 	staa	PIAU10CRA
 
 	; sound data
@@ -812,18 +873,15 @@ SOUNDB:
 	;ora	#$8		;set Cx2
 	
 	oraa	#$4 	;select pdr
+	ldaa #$34
 	staa	PIAU10CRA
-	nop
-	nop
-	nop
-	nop
-	nop
 	
 	ldaa	PIAU10CRA
 	;eora	#$8		;toggle Cx2
 	;anda	#~$8		;clr Cx2
-	ora	#$8		;set Cx2
+	oraa	#$8		;set Cx2
 	oraa	#$4 	;select pdr
+	ldaa #$3c
 	staa	PIAU10CRA
 	;staa LAMPS+2
 	rts	;SOUNDB
@@ -859,14 +917,40 @@ START2:
 	staa SOUNDINDEX
 
 	jsr BGSOUNDRESET
-	ldab	#10
-DELAY2c:
-	LDX		#62500
-DELAY2b:	
-		DEX
-		BNE DELAY2b
-	decb
-	bne DELAY2c
+	jsr WAITX
+	ldaa #$aa
+	staa LAMPS
+
+
+	ldab #$90
+	jsr SOUNDB
+	ldab #$63
+	jsr SOUNDB
+	ldab #$39
+	jsr SOUNDB
+	ldab #$ff 
+	jsr SOUNDB
+	ldab #$ff
+	jsr SOUNDB
+	ldab #$7e 
+	jsr SOUNDB
+	ldab #$9c
+	jsr SOUNDB
+	ldab #$e8 
+	jsr SOUNDB
+	ldab #$7e
+	jsr SOUNDB
+	ldab #$9c
+	jsr SOUNDB
+	
+	ldx #SOUNDDATA1
+.sloop:
+	ldab 0,X
+	inx
+	jsr SOUNDB
+	cpx	#ENDSOUNDDATA
+	ble	.sloop
+
 LOOPJE:
 ;	ldab #$f
 ;DIAGLOOP:;
@@ -899,9 +983,9 @@ LOOPJE:
 	ldaa LOOPCOUNT2
 	;staa LAMPS+6
 
-	ldab	SOUNDINDEX
+	;ldab	SOUNDINDEX
 	;stab LAMPS+6
-	jsr SOUNDB
+	;jsr SOUNDB
 	
 
 	inc LOOPCOUNT2
@@ -917,8 +1001,10 @@ LOOPJE:
 	cmpa #20
 	bne	.norol2
 	clr LOOPCOUNT1
+
 	ldab	SOUNDINDEX
 	jsr BGSOUNDB
+	
 	ldab	SOUNDINDEX
 	jsr SOUNDB
 	inc SOUNDINDEX
@@ -951,7 +1037,6 @@ LOOPJE:
 	;rol LAMPS+6
 	;ror LAMPS+7
 	
-
 	
 .norol
 
@@ -1369,6 +1454,7 @@ MEMTESTAA:
 	jmp	START
 
 IRQVEC:
+	sei
 	jsr DISPLAYIT
 	jsr SHOWLAMPS
 	rti
