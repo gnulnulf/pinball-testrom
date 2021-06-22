@@ -64,6 +64,7 @@ LOOPCOUNT1	rmb 1
 LOOPCOUNT2	rmb 1
 DUM1	rmb 1
 SOUNDINDEX	rmb 1
+BGSOUNDINDEX rmb 1
 ENDVARS
     org $7fe
 ENDRAM rmb 1
@@ -914,6 +915,8 @@ START2:
 	clr LOOPCOUNT2
 
 	ldaa #$0
+	staa BGSOUNDINDEX
+	ldaa #$c0
 	staa SOUNDINDEX
 
 	jsr BGSOUNDRESET
@@ -921,7 +924,7 @@ START2:
 	ldaa #$aa
 	staa LAMPS
 
-
+	bra	LOOPJE
 	ldab #$90
 	jsr SOUNDB
 	ldab #$63
@@ -950,6 +953,7 @@ START2:
 	jsr SOUNDB
 	cpx	#ENDSOUNDDATA
 	ble	.sloop
+
 
 LOOPJE:
 ;	ldab #$f
@@ -998,14 +1002,28 @@ LOOPJE:
 	;jsr TOGGLEDIAG
 	inc LOOPCOUNT1
 	ldaa LOOPCOUNT1
-	cmpa #20
+	cmpa #10
 	bne	.norol2
 	clr LOOPCOUNT1
 
-	ldab	SOUNDINDEX
+	ldab	BGSOUNDINDEX
 	jsr BGSOUNDB
+	inc BGSOUNDINDEX
 	
 	ldab	SOUNDINDEX
+	ldab	#$c7	; on lockon
+	ldab    #$e3	; nice shot nimrod
+	ldab	#$2		; piiieeeeeeuw \ 
+	ldab	#$c8	; HAHAHAHA
+	ldab	#$bf	; explosion
+	ldab	#$c0	; larger explosion
+	ldab	#$c1	; smash
+	ldab	#$1b	; slow laser
+	ldab	#$c3	; longer smash
+	ldab	#$c2	; you can't win
+	
+	ldab	SOUNDINDEX
+	stab	LAMPS+7
 	jsr SOUNDB
 	inc SOUNDINDEX
 
