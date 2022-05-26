@@ -32,3 +32,10 @@ assembler used: alfsembler http://john.ccac.rwth-aachen.de:8000/as/
 aswcurr/bin/asw.exe -cpu 6800 -A  sys11_testrom_U27_256.asm && \
 aswcurr/bin/p2bin.exe  sys11_testrom_U27_256.p 
 ```
+
+
+```
+d:\Pinball\aswcurr\bin\asw.exe -cpu 6800 -A bally-mpu35-u6-v1.asm
+d:\Pinball\aswcurr\bin\p2bin.exe bally-mpu35-u6-v1.p
+copy /y bally-mpu35-u6-v1.bin d:\Pinball\roms\hglbtrtr\720-35_6.716
+```
