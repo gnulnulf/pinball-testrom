@@ -43,6 +43,7 @@
 
 	cpu 6800
 	; to fill eprom
+
 	org	$5800
 
 	
@@ -68,6 +69,9 @@ RAMU7		equ $0000
 RAMU7SIZE	equ $80
 RAMU8		equ $0200
 RAMU8SIZE	equ $100
+
+
+
 
 ; PIAU10_CA1 self test switch
 ; PIAU10_CB1 zero crossing
