@@ -463,66 +463,56 @@ lamptest:
 	incb
 	bne .lamploop
 	
+; display loop
 
-; display 
+	ldaa #$34
+	staa PIAU10 + CRA	; displaystrobe
+	staa PIAU11 + CRA	; lampstrobe 2
+	staa PIAU10 + CRB	; lampstrobe 1
+	
 	ldx #DISPLAYBUF2
-	
-	ldaa #$0e	; display 1
-.displayloop2
-	STAA TEMP1
-	ldb	#2		; display digit
+	ldb	#2
 .displayloop1
-
-	stab PIAU11 + DATAA
-
-	;ldaa #$3c
-	;staa PIAU10 + CRA
+	ldaa #$34			; 
+	staa PIAU10 + CRA	; displaystrobe CA2=0
 	
-	ldaa	0,X	;dF
+	tba
+	oraa #$1	; strobe 5
+	staa PIAU11 + DATAA
+	
+	ldaa 0,X			;display 1
+	anda	#$fe
 	staa PIAU10 + DATAA
-	anda #$f0
-	oraa	TEMP1	;display 1 strobe
+	
+	ldaa 7,X			;display 2
+	anda	#$fd
 	staa PIAU10 + DATAA
-	jsr displaystrobe
+
+	ldaa 14,X			;display 3
+	anda	#$fb
+	staa PIAU10 + DATAA
 	
-	;ldaa #$34
-	;staa PIAU10 + CRA
-	
+	ldaa 21,X			;display 4
+	anda	#$f7
+	staa PIAU10 + DATAA
+
+	;display 5
+	stab PIAU11 + DATAA	
+	ldaa 28,X			;display 5
+	staa PIAU10 + DATAA
+
+
+	ldaa #$3c
+	staa PIAU10 + CRA	; displaystrobe CA2=1
+
 	inx
 	aslb
 	bne .displayloop1
 
-	ldaa TEMP1
-	asla
-	oraa #$1
-	anda #$0f
-;	bne .displayloop2
+
 	
 	jmp mainloop
-	
-	; display 5
-		ldb	#2		; display digit
-.displayloop5
-	orab #$1	; strobe 5
-	stab PIAU11 + DATAA
-	andb #$fe
-	
-	ldaa	0,X	;dF
-	staa PIAU10 + DATAA
-	anda #$f0
-	oraa	$f	;display 1-4 off
-	staa PIAU10 + DATAA
-	jsr displaystrobe
-	
-	
-	inx
-	aslb
-	bne .displayloop5
-	
-	
-	
-	jmp mainloop
-	bra lamptest
+	jmp lamptest
 .brek bra .brek 
 	
 	
