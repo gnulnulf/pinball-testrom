@@ -1,0 +1,1632 @@
+;
+; @brief Testrom for Bally MPU35 U6 for use with uart
+;
+; @version 1.0
+; @author Arco van Geest <arco@appeltaart.mine.nu>
+; @copyright 2021-2025 Arco van Geest <arco@appeltaart.mine.nu> All right reserved.
+
+; connect a UART-USB RX to J1-10 and set your baudrate to 19200
+; If the 6800 clock differs too much from 520kHz then the baudrate can be a bit different.
+; The test starts and if FAIL appears, the last test failed.
+ 
+
+;	This testrom is free software: you can redistribute it and/or modify
+;	it under the terms of the GNU General Public License as published by
+;	the Free Software Foundation, either version 3 of the License, or
+;	(at your option) any later version.
+
+;	This testrom is distributed in the hope that it will be useful,
+;	but WITHOUT ANY WARRANTY; without even the implied warranty of
+;	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;	GNU General Public License for more details.
+
+;	You should have received a copy of the GNU General Public License
+;	along with this file.  If not, see <http://www.gnu.org/licenses/>.
+
+; inspired by the testroms from Leon Borré
+; 
+;
+; ## Assembling
+;
+; assembler used: alfsembler http://john.ccac.rwth-aachen.de:8000/as/
+; d:\Pinball\aswcurr\bin\asw.exe -cpu 6800 -A bally-mpu35-u6-v3-uart.asm
+; d:\Pinball\aswcurr\bin\p2bin.exe bally-mpu35-u6-v3-uart.p
+;
+;
+; @date 20210612 Arco van Geest Initial version first testrom
+; @date 20250907 Arco van Geest Added UART support 
+
+; RAM
+	org $0
+; variables
+TEMP1	rmb 1
+TEMP2	rmb 1
+TEMPH	rmb 1
+TEMPL   rmb 1
+DIP1	rmb 1
+DIP9	rmb 1
+DIP17	rmb 1
+DIP25	rmb 1
+;DISPLAYBUF1 rmb 5*7	; byte per char for now
+SWITCH	rmb 8
+UARTTMP rmb 1
+UARTAX	rmb 2
+BINTEMP rmb 1
+
+
+	org $7f
+STACK	rmb 1
+
+
+; NVRAM
+	org $200
+LAMPS rmb 16
+DISPLAYBUF2	rmb 5*7
+
+	cpu 6800
+	; to fill eprom
+	org	$5800
+
+	
+;	org $A000
+	
+
+DATAA	equ 0
+DATAB	equ 2
+DDRA	equ 0
+DDRB	equ 2
+CRA		equ 1
+CRB		equ	3
+
+; memory map
+;$0000-007F 6810 RAM
+;$0088-008B 6821 PIA U10
+;$0090-0093 6821 PIA U11
+;$0200-02FF 5101 RAM (upper 4 bits only! - ROMs expect lower 4 bits to read high)
+;$1000-17FF ROM U1 2716
+;$5000-57FF ROM U2 2716
+;$5800-5FFF ROM U6 2716
+
+
+PIAU10		equ	$0088
+PIAU11		equ	$0090
+RAMU7		equ $0000
+RAMU7SIZE	equ $80
+RAMU8		equ $0200
+RAMU8SIZE	equ $100
+
+; PIAU10_CA1 self test switch
+; PIAU10_CB1 zero crossing
+; PIAU11_CA1 display interrupt
+; PIAU11_CB1 J5-32 (pulled down)
+
+; PIAU10_CA2 display enable
+; PIAU10_CB2 S25-32 + LAMPSTROBE1
+; PIAU11_CA2 diagnostic led + LAMPSTROBE2
+; PIAU11_CB2 SOLENOID/SOUNDSELECT
+
+
+; ****************************************************
+; SPXWAIT - procedure wait without need for memory
+; 512kHz int, 8cycles DELAY= 16ns per loop
+; 0.5s / 0.000016 = 31250 times
+; use SP as return address
+; use X as delay
+; ****************************************************
+SPXWAIT:
+	dex
+	bne SPXWAIT
+	tsx		; X=SP+1
+	dex		; we need X=SP so -1
+	jmp	$0,x
+
+; ****************************************************
+; SPLEDON/SPLEDOFF
+; set led without need of stack/memory
+; use SP as return address
+; ****************************************************
+SPLEDOFF:
+	ldaa	#$30	; led off
+	bra SPLED
+SPLEDON:
+	ldaa	#$38	; led on
+SPLED:
+	STAA	PIAU11 + CRA
+	tsx		; X=SP+1
+	dex		; we need X=SP so -1
+	jmp	$0,x
+	
+	
+
+; ****************************************************
+; SPXA_UART_TX
+; set led without need of stack/memory
+; use SP as return address
+; ****************************************************
+SPXA_UART_TX:
+	ldx #10
+	clc
+SPXA_UART_LOOP: ; 6144 = 32 cycles?  500000/19200=26 500000/9600=52
+	; gemeten 20000 * 33 = 660khz
+	ldab	#$30	; 2 CB2 low
+	bcc SPXA_UART_0  ; 4
+	ldab	#$38    ; 2 
+							;[6/8]
+SPXA_UART_0:		
+	
+	stab PIAU11 + CRB ; 5 store low
+	stab PIAU11 + CRB ; 5 store low
+
+	nop					; 2
+
+	sec					; 2
+	ROR A				; 6
+	dex					; 4
+	bne SPXA_UART_LOOP	; 4  [16]
+	
+	tsx		; X=SP+1
+	dex		; we need X=SP so -1
+	jmp	$0,x
+	
+SPXA_RF_TX:
+	ldx #8
+SPXA_RF_LOOP:
+	ldab	#$38	; CA2 low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+
+	ldab	#$30
+	stab PIAU11 + CRA ; store low
+	ROL A
+	bcc SPXA_RF_0
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	
+SPXA_RF_0:
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	dex
+	bne SPXA_RF_LOOP
+
+	ldab	#$38
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	stab PIAU11 + CRA ; store low
+	ldab	#$30
+	stab PIAU11 + CRA ; store low
+
+	tsx		; X=SP+1
+	dex		; we need X=SP so -1
+	jmp	$0,x
+
+; ****************************************************
+; SPX_FAIL
+; try to send FAIL on serial out and hang
+; ****************************************************
+SPX_FAIL:
+	ldaa #$0a
+	lds	#TXf0
+	JMP SPXA_UART_TX
+TXf0:
+
+	ldaa #'F'
+	lds	#TXf1
+	JMP SPXA_UART_TX
+TXf1:
+
+	ldaa #'A'
+	lds	#TXf2
+	JMP SPXA_UART_TX
+TXf2:
+
+	ldaa #'I'
+	lds	#TXf3
+	JMP SPXA_UART_TX
+TXf3:
+
+	ldaa #'L'
+	lds	#TXf4
+	JMP SPXA_UART_TX
+TXf4:
+
+	ldaa #$0a
+	lds	#TXf5
+	JMP SPXA_UART_TX
+TXf5:
+.HANGLOOP:	bne	.HANGLOOP
+
+; ****************************************************
+; * driver functions with memory
+; ****************************************************
+xwait:
+	DEX
+	BNE xwait
+	rts
+	
+ledon:
+	psha
+	ldaa PIAU11 + CRA
+	oraa	#$38
+	staa PIAU11 + CRA
+	pula
+	rts
+
+ledoff:
+	psha
+	ldaa PIAU11 + CRA
+	oraa	#$30
+	anda #$F7
+	staa PIAU11 + CRA
+	pula
+	rts
+	
+	
+lampstrobe:
+	psh a
+	ldaa PIAU10 + CRB
+	oraa	#$3c
+	ldaa #$3c
+	staa PIAU10 + CRB
+	oraa	#$34
+	anda #$F7
+	ldaa #$34
+	staa PIAU10 + CRB
+	pula
+	rts
+	
+	
+displaystrobe:
+	psha
+	ldaa PIAU10 + CRA
+	oraa	#$3c
+	ldaa #$3c
+	staa PIAU10 + CRA
+	oraa	#$34
+	anda #$F7
+	ldaa #$34
+	staa PIAU10 + CRA
+	pula
+	rts
+
+; ------------------------------------------
+; uart_tx_x_string = send 0 terminated string
+; 
+; ------------------------------------------
+uart_tx_x_string:
+	psh a
+	psh b
+uart_tx_x_string_loop:
+	ldaa $0,X
+	beq		uart_tx_x_string_end
+	jsr	uart_tx_a
+	inx
+	bra uart_tx_x_string_loop
+uart_tx_x_string_end:
+	pul b
+	pul a
+	rts
+
+
+; ------------------------------------------
+; uart_tx_a = send single character
+; 
+; ------------------------------------------
+
+uart_tx_a:
+	; mask interrupts?
+	psha
+	pshb
+;	stx	 UARTAX
+	staa UARTTMP
+	ldab PIAU11 + CRB	
+	orab #$30
+	stab PIAU11 + CRB ; CB2 as output
+	
+
+	lda #10
+	clc
+uart_tx_a_loop: ; 6144 = 32 cycles?  500000/19200=26 500000/9600=52
+	; gemeten 20000 * 33 = 660khz
+	; clock=528kHz ~27,5
+	ldab PIAU11 + CRB	;4
+	andb #$FF-$08		;2
+	bcc uart_tx_a_0  ; 4
+	orab #$08		 ; 2
+							;[10/12]
+						; -----
+uart_tx_a_0:		
+	stab PIAU11 + CRB ; 5 store low
+	;stab PIAU11 + CRB ; 5 store low (5x=9600?)
+
+;	nop					; 2
+						; -----
+	sec					; 2
+	ROR 	UARTTMP		; 6
+	deca				; 2
+	bne uart_tx_a_loop	; 4  [14]
+	
+	;ldx	UARTAX
+	
+	pul b
+	pul a
+	rts
+	
+uart_tx_bin:
+	psha
+	pshb
+	staa BINTEMP
+	ldab	#8
+uart_tx_bin_loop:
+	ldaa #'0'
+	ror BINTEMP
+	bcc .uart_tx_bin_0
+	ldaa #'1'
+.uart_tx_bin_0
+	bsr uart_tx_a
+	decb
+	bne uart_tx_bin_loop
+	pul b
+	pul a
+	rts
+; ****************************************************
+; fail with memory
+; try to send FAIL on serial out and hang
+; ****************************************************
+fail:
+	ldx	#FAIL_STR
+	bsr uart_tx_x_string
+	.HANGLOOP:	bne	.HANGLOOP
+; ****************************************************
+; * DATA
+; ****************************************************
+HELLO_STR: db "NFV MPU35 testrom",10
+			db "(c)2025 Arco van Geest",10
+			db	0
+U8_STR: db "RAM U08",10,0
+DIP_STR: db "Dipswitches:",10,0
+FAIL_STR: db 10,"FAIL",10,0
+OK_STR: db 10,"Board seems OK",10,0
+HWINIT_STR: db "Hardware init",10,0
+S55_STR: db "55",10,0
+SAF_STR: db "AF",10,0
+S5F_STR: db "5F",10,0
+INC_STR: db "INC",10,0
+U1_STR: db "ROM U01 - $1000",10,0
+U2_STR: db "ROM U02 - $5000",10,0
+
+
+; ****************************************************
+; * START
+; ****************************************************
+
+START:
+	SEI
+	; try to turn on led
+	CLR		PIAU11 + CRA
+	ldaa	#$38	; led on
+	STAA	PIAU11 + CRA
+
+	ldaa #$0a
+	lds	#TXa0
+	JMP SPXA_UART_TX
+TXa0:
+
+	ldaa #'M'
+	lds	#TXa1
+	JMP SPXA_UART_TX
+TXa1:
+
+	ldaa #'P'
+	lds	#TXa2
+	JMP SPXA_UART_TX
+TXa2:
+
+	ldaa #'U'
+	lds	#TXa3
+	JMP SPXA_UART_TX
+TXa3:
+
+	ldaa #'5'
+	lds	#TXa4
+	JMP SPXA_UART_TX
+TXa4:
+
+	ldaa #$0a
+	lds	#TXa5
+	JMP SPXA_UART_TX
+TXa5:
+
+
+; -------------------------------------------
+; U11 PIA pretest
+; -------------------------------------------
+
+
+
+
+
+
+	; sleep 1000 
+;	LDS	#TESTU11
+;	LDX	#1000
+;	JMP SPXWAIT
+TESTU11:
+	; test if CRA on U11 is working
+	ldaa 	PIAU11 + CRA
+	anda	#$3f
+	suba	#$38
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+
+
+
+
+
+
+
+	ldaa #'U'
+	lds	#TX01
+	JMP SPXA_UART_TX
+TX01:
+
+	ldaa #'1'
+	lds	#TX02
+	JMP SPXA_UART_TX
+TX02:
+
+	ldaa #'1'
+	lds	#TX03
+	JMP SPXA_UART_TX
+TX03:
+
+	ldaa #$0a
+	lds	#TX04
+	JMP SPXA_UART_TX
+TX04:
+
+
+
+
+; -------------------------------------------
+; U11 PIA pretest
+; -------------------------------------------
+
+
+
+;	ldaa #'N'
+;	lds	#TXN2
+;	JMP SPXA_RF_TX
+;TXN2:
+;	ldaa #'F'
+;	lds	#TXF2
+;	JMP SPXA_RF_TX
+;TXF2:
+;	ldaa #'V'
+;	lds	#TXV2
+;	JMP SPXA_RF_TX
+;TXV2:
+
+;	JMP START
+	
+; ########################################################
+; # Start without memory
+	ldaa	#$30	; led off
+	STAA	PIAU11 + CRA
+
+;	LDS	#TESTU11OK
+;	LDX	#1000
+;	JMP SPXWAIT
+;TESTU11OK:
+
+	ldaa	#$38	; led on
+	STAA	PIAU11 + CRA
+
+;	LDS	#TESTU11OKA
+;	LDX	#31250
+;	JMP SPXWAIT
+;TESTU11OKA:
+
+	ldaa	#$30	; led off
+	STAA	PIAU11 + CRA
+
+;	LDS	#TESTU11OKB
+;	LDX	#31250
+;	JMP SPXWAIT
+;TESTU11OKB:
+	LDS	#TESTU10
+	JMP SPLEDON
+	
+; -------------------------------------------
+; U10 PIA pretest
+; -------------------------------------------
+TESTU10:
+
+	ldaa #'U'
+	lds	#TX11
+	JMP SPXA_UART_TX
+TX11:
+
+	ldaa #'1'
+	lds	#TX12
+	JMP SPXA_UART_TX
+TX12:
+
+	ldaa #'0'
+	lds	#TX13
+	JMP SPXA_UART_TX
+TX13:
+
+	ldaa #$0a
+	lds	#TX14
+	JMP SPXA_UART_TX
+TX14:
+
+	CLR		PIAU10 + CRA
+	CLR		PIAU10 + CRB
+
+	ldaa	#$38	
+	STAA	PIAU10 + CRA
+
+;	LDS	#TESTU10W
+;	LDX	#31250
+;	JMP SPXWAIT
+;TESTU10W:
+
+	ldaa 	PIAU10 + CRA
+	anda	#$3f
+	suba	#$38
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+	LDS	#TESTU10OK
+	JMP SPLEDOFF
+TESTU10OK:
+
+;	LDS	#TESTU7
+;	LDX	#31250
+;	JMP SPXWAIT
+
+; -------------------------------------------
+; U7 RAM Test
+; -------------------------------------------
+
+TESTU7:
+
+	ldaa #'U'
+	lds	#TX21
+	JMP SPXA_UART_TX
+TX21:
+
+	ldaa #'0'
+	lds	#TX22
+	JMP SPXA_UART_TX
+TX22:
+
+	ldaa #'7'
+	lds	#TX23
+	JMP SPXA_UART_TX
+TX23:
+
+	ldaa #10
+	lds	#TX24
+	JMP SPXA_UART_TX
+TX24:
+	ldaa #13
+	lds	#TX25
+	JMP SPXA_UART_TX
+TX25:
+
+; D0-7
+; 1-252 , read
+; all 55
+; all aa
+; all ff
+; all 0
+	; LED ON
+	LDS	#TESTU7B
+	JMP SPLEDON
+TESTU7B:
+
+
+	; SLEEP
+;	LDS	#TESTU7C
+;	LDX	#31250
+;	JMP SPXWAIT
+;TESTU7C:
+
+MEMTESTD:
+	ldaa #'D'
+	lds	#TXD
+	JMP SPXA_UART_TX
+TXD:
+
+	; DATALINE D0
+	ldaa #'0'
+	lds	#TX0
+	JMP SPXA_UART_TX
+TX0:
+	ldaa	#$01
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+
+	; DATALINE D1
+	ldaa #'1'
+	lds	#TX1
+	JMP SPXA_UART_TX
+TX1:
+	ldaa	#$02
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+
+	; DATALINE D2
+	ldaa #'2'
+	lds	#TX2
+	JMP SPXA_UART_TX
+TX2:
+	ldaa	#$04
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+	; DATALINE D3
+	ldaa #'3'
+	lds	#TX3
+	JMP SPXA_UART_TX
+TX3:
+	ldaa	#$08
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+	; DATALINE D4
+	ldaa #'4'
+	lds	#TX4
+	JMP SPXA_UART_TX
+TX4:
+	ldaa	#$10
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+	; DATALINE D5
+	ldaa #'5'
+	lds	#TX5
+	JMP SPXA_UART_TX
+TX5:
+	ldaa	#$20
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+	; DATALINE D6
+	ldaa #'6'
+	lds	#TX6
+	JMP SPXA_UART_TX
+TX6:
+	ldaa	#$40
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+	; DATALINE D7
+	ldaa #'7'
+	lds	#TX7
+	JMP SPXA_UART_TX
+TX7:
+	ldaa	#$80
+	staa	$0
+	cmpa	$0
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+;.HANGLOOP:	bne	.HANGLOOP
+	ldaa #13
+	lds	#TX8
+	JMP SPXA_UART_TX
+TX8:
+	ldaa #10
+	lds	#TX9
+	JMP SPXA_UART_TX
+TX9:
+
+
+; datalines checked
+
+	
+	ldaa #'I'
+	lds	#TX31
+	JMP SPXA_UART_TX
+TX31:
+
+	ldaa #'N'
+	lds	#TX32
+	JMP SPXA_UART_TX
+TX32:
+
+	ldaa #'C'
+	lds	#TX33
+	JMP SPXA_UART_TX
+TX33:
+
+	ldaa #10
+	lds	#TX34
+	JMP SPXA_UART_TX
+TX34:
+
+; test individual values
+MEMTESTINC:
+; write 252-124 to ram
+	ldx		#RAMU7SIZE-1
+	ldaa	#252
+MINCLOOP:
+	staa	RAMU7,X
+	deca
+	DEX
+	bne 	MINCLOOP
+; read the expected value	
+	ldx		#RAMU7SIZE-1
+	ldaa	#252
+MINCLOOPr:
+	cmpa	RAMU7,X
+.HANGLOOP:	bne	.HANGLOOP
+	deca
+	DEX
+	bne 	MINCLOOPr
+
+	ldaa #'$'
+	lds	#TX41
+	JMP SPXA_UART_TX
+TX41:
+
+	ldaa #'5'
+	lds	#TX42
+	JMP SPXA_UART_TX
+TX42:
+
+	ldaa #'5'
+	lds	#TX43
+	JMP SPXA_UART_TX
+TX43:
+
+	ldaa #10
+	lds	#TX44
+	JMP SPXA_UART_TX
+TX44:
+; test wil all $55
+MEMTEST55:
+	ldx		#RAMU7SIZE-1
+	ldaa	#$55
+M55LOOP:
+	staa	RAMU7,X
+	DEX
+	bne 	M55LOOP
+	staa	RAMU7,X
+
+	ldx		#RAMU7SIZE-2
+	ldaa	#$00
+M55LOOPa:
+	staa	RAMU7,X
+	DEX
+	bne 	M55LOOPa
+	staa	RAMU7,X
+	ldaa	RAMU7+RAMU7SIZE-1
+	suba	#$55
+	bne	MEMTEST55
+
+
+	ldaa #'$'
+	lds	#TX51
+	JMP SPXA_UART_TX
+TX51:
+
+	ldaa #'a'
+	lds	#TX52
+	JMP SPXA_UART_TX
+TX52:
+
+	ldaa #'a'
+	lds	#TX53
+	JMP SPXA_UART_TX
+TX53:
+
+	ldaa #10
+	lds	#TX54
+	JMP SPXA_UART_TX
+TX54:
+
+
+
+MEMTESTAA:
+	ldx		#RAMU7SIZE-1
+	ldaa	#$aa
+MAALOOP:
+	staa	RAMU7,X
+	DEX
+	bne 	MAALOOP
+	staa	RAMU7,X
+
+	ldx		#RAMU7SIZE-2
+	ldaa	#$00
+MAALOOPa:
+	staa	RAMU7,X
+	DEX
+	bne 	MAALOOPa
+	staa	RAMU7,X
+	ldaa	RAMU7+RAMU7SIZE-1
+	suba	#$aa
+	bne	MEMTESTAA
+
+	LDS	#TESTU7OK
+	JMP SPLEDOFF
+TESTU7OK:
+
+
+
+
+; from here we can use memory
+	lds	#RAMU7SIZE-1
+
+; -------------------------------------------
+; Stack!
+; -------------------------------------------
+
+
+; -------------------------------------------
+; Hello
+; -------------------------------------------
+	
+	ldx	#HELLO_STR
+	jsr uart_tx_x_string
+
+; -------------------------------------------
+; Hardware IO init
+; -------------------------------------------	
+	ldx	#HWINIT_STR
+	jsr uart_tx_x_string
+	
+START_HARDWARE_INIT:
+	; select DDR
+	CLR		PIAU10 + CRA
+	CLR		PIAU10 + CRB
+	CLR		PIAU11 + CRA
+;	CLR		PIAU11 + CRB
+
+	; FF is all ports output exepct U10-B
+	ldaa	#$FF
+	STAA	PIAU10 + DDRA ;switch colum + DISPLAY_SEGMENT+ DISPLAY LATCH
+	CLR		PIAU10 + DDRB ;switch return row
+	STAA	PIAU11 + DDRA ; DISPLAY LATCH+DISPLAY GIGIT
+;	STAA	PIAU11 + DDRB ; SOUND + SOLENOIDS
+
+	; 4 = select data register
+	ldaa	#$04
+	STAA	PIAU10 + CRA
+	STAA	PIAU10 + CRB
+	STAA	PIAU11 + CRA
+;	STAA	PIAU11 + CRB
+
+
+
+
+	
+
+; -------------------------------------------
+; U8 5101
+; -------------------------------------------
+
+	ldx	#U8_STR
+	jsr uart_tx_x_string
+		
+	ldaa #'D'
+	jsr uart_tx_a
+	; DATALINE D4
+	ldaa #'4'
+	jsr uart_tx_a
+	ldaa	#$1f
+	staa	$200
+	cmpa	$200
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+	
+	; DATALINE D5
+	ldaa #'5'
+	jsr uart_tx_a
+	ldaa	#$2f
+	staa	$200
+	cmpa	$200
+	beq	.OK5
+	jmp	SPX_FAIL
+.OK5
+
+	; DATALINE D6
+	ldaa #'6'
+	jsr uart_tx_a
+	ldaa	#$4f
+	staa	$200
+	cmpa	$200
+	beq	.OK6
+	jmp	SPX_FAIL
+.OK6
+
+	; DATALINE D7
+	ldaa #'7'
+	jsr uart_tx_a
+	ldaa	#$8f
+	staa	$200
+	cmpa	$200
+	beq	.OK7
+	jmp	SPX_FAIL
+.OK7
+
+	ldaa #10
+	jsr uart_tx_a
+
+	ldx	#INC_STR
+	jsr uart_tx_x_string
+
+
+U8MEMTESTINC:
+; fill incremental
+	ldx		#RAMU8
+	ldab	#RAMU8SIZE-1
+	ldaa	#$df	; first prime under 16 =13<<4
+	staa TEMP1
+	
+.U8LOOPi:
+	staa	0,X
+	suba #$10
+	cmpa #$ff
+	bne .u8nowrap
+	ldaa	#$df
+.u8nowrap
+
+	INX
+	decb
+	bne 	.U8LOOPi
+
+; compare
+	ldx		#RAMU8
+	ldab	#RAMU8SIZE-1
+	ldaa	#$df
+.U8LOOPci:
+	cmpa	0,X
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+	suba #$10
+	cmpa #$ff
+	bne .nowrapci
+	ldaa	#$df
+.nowrapci
+	INX
+	decb
+	bne 	.U8LOOPci
+
+
+	ldx	#S5F_STR
+	jsr uart_tx_x_string
+
+
+;	staa $2
+
+U8MEMTEST5F:
+; fill $5F
+	ldx		#RAMU8
+	ldab	#RAMU8SIZE-1
+	ldaa	#$5f
+.U8LOOP:
+	staa	0,X
+	INX
+	dec b
+	bne 	.U8LOOP
+
+; compare
+	ldx		#RAMU8
+	ldab	#RAMU8SIZE-1
+	ldaa	#$5f
+.U8LOOPc:
+	cmpa	0,X
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+	INX
+	decb
+	bne 	.U8LOOPc
+
+
+	ldx	#SAF_STR
+	jsr uart_tx_x_string
+
+
+;	staa $2
+
+U8MEMTESTAF:
+; fill $AF
+	ldx		#RAMU8
+	ldab	#RAMU8SIZE-1
+	ldaa	#$af
+.U8LOOPa:
+	staa	0,X
+	INX
+	dec b
+	bne 	.U8LOOPa
+
+; compare
+	ldx		#RAMU8
+	ldab	#RAMU8SIZE-1
+	ldaa	#$af
+.U8LOOPca:
+	cmpa	0,X
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+	INX
+	decb
+	bne 	.U8LOOPca
+
+
+
+; -------------------------------------------
+; Dip switches
+; -------------------------------------------
+	
+
+	
+
+; get dipswitches
+; inactive
+; CB2=0
+; U10-A5,6,7=0
+
+
+	
+;	ldaa #$3c	; CA2 off select output
+;	staa PIAU10 + CRA
+	ldaa  PIAU10 + CRA
+	anda	#~($04)
+	staa  PIAU10 + CRA
+
+	clr PIAU10 + DATAA	; all switch strobes off 
+	
+	;nop
+	
+	
+	; CB2 on , switchstrobe DIP25-32 off
+	ldaa  PIAU10 + CRB
+	oraa	#$38+$04	; CB2 high sel DATA
+;	anda	#~($04) ; sel DDR
+	staa  PIAU10 + CRB
+;	ldaa #$3c	
+	;staa PIAU10 + CRB
+	;nop
+	ldaa PIAU10 + DATAB	; switchdata
+	staa DIP25
+
+
+	ldaa  PIAU10 + CRB
+	oraa	#$04	; sel DATA
+	anda	#~($08) ; CB2 low
+	staa  PIAU10 + CRB
+
+	ldaa #$80
+	staa PIAU10 + DATAA	; switchprobe dip17
+	;nop
+	ldaa PIAU10 + DATAB	; switchdata
+	staa DIP17
+	
+	ldaa #$40
+	staa PIAU10 + DATAA	; switchprobe dip9
+	;nop
+	ldaa PIAU10 + DATAB	; switchdata
+	staa DIP9
+	
+	ldaa #$20
+	staa PIAU10 + DATAA	; switchprobe dip1
+	;nop
+	ldaa PIAU10 + DATAB	; switchdata
+	staa DIP1
+
+	ldaa DIP1
+	jsr uart_tx_bin
+
+	ldaa #' '
+	jsr uart_tx_a
+
+	ldaa DIP9
+	jsr uart_tx_bin
+
+	ldaa #' '
+	jsr uart_tx_a
+
+	ldaa DIP17
+	jsr uart_tx_bin
+
+	ldaa #' '
+	jsr uart_tx_a
+
+	ldaa DIP25
+	jsr uart_tx_bin
+
+	ldaa #10
+	jsr uart_tx_a
+
+	LDAA $5000 ; for breakpoint bpr 5000 5000
+; -------------------------------------------
+; ROM U1 Test
+; -------------------------------------------
+	
+	ldx #U1_STR
+	jsr uart_tx_x_string
+
+	lda #81		; $1000 % 251 +1
+	ldx #$1000
+ROMU1_LOOP
+	cmpa 0,x
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+	inca
+	inx
+	cmpa #253
+	bne	.nowrap
+	ldaa #1
+.nowrap
+	cpx #$1800
+	bne ROMU1_LOOP
+	
+
+
+; -------------------------------------------
+; ROM U2 Test
+; -------------------------------------------
+	
+	ldx #U2_STR
+	jsr uart_tx_x_string
+
+	lda #150		; $5000 % 251 +1
+	ldx #$5000
+
+ROMU2_LOOP
+	cmpa 0,x
+	beq	.OK
+	jmp	SPX_FAIL
+.OK
+	inca
+	inx
+	cmpa #253
+	bne	.nowrap
+	ldaa #1
+.nowrap
+	cpx #$5800
+	bne ROMU2_LOOP
+	
+; -------------------------------------------
+; END TEST
+; -------------------------------------------
+	
+	
+	
+	
+	ldb	#16
+.loop:
+	jsr ledon
+	ldx #5120
+	jsr xwait
+	jsr ledoff
+	ldx #5120
+	jsr xwait
+	decb
+	bne .loop
+	
+	
+	ldx	#OK_STR
+	jsr uart_tx_x_string
+	
+	JMP START
+	
+	
+	
+	
+; -------------------------------------------
+; REST IS OLD TESTROM
+; -------------------------------------------
+	
+	
+	
+	
+
+;	
+;	
+;	
+;	
+;	
+;; -------------------------------------------
+;; Hardware OK
+;; -------------------------------------------
+;	
+;START_HARDWARE_OK:
+;	; select DDR
+;	CLR		PIAU10 + CRA
+;	CLR		PIAU10 + CRB
+;	CLR		PIAU11 + CRA
+;	CLR		PIAU11 + CRB
+;
+;	; FF is all ports output exepct U10-B
+;	ldaa	#$FF
+;	STAA	PIAU10 + DDRA ;switch colum + DISPLAY_SEGMENT+ DISPLAY LATCH
+;	CLR		PIAU10 + DDRB ;switch return row
+;	STAA	PIAU11 + DDRA ; DISPLAY LATCH+DISPLAY GIGIT
+;	STAA	PIAU11 + DDRB ; SOUND + SOLENOIDS
+;
+;	; 4 = select data register
+;	ldaa	#$04
+;	STAA	PIAU10 + CRA
+;	STAA	PIAU10 + CRB
+;	STAA	PIAU11 + CRA
+;	STAA	PIAU11 + CRB
+;
+;
+;
+;; fill lamps
+;	ldaa #$5f
+;	ldx	#LAMPS
+;	staa $0,x
+;	staa $1,x
+;	staa $2,x
+;	staa $3,x
+;	staa $4,x
+;	staa $5,x
+;	staa $6,x
+;	staa $7,x
+;
+;
+;; fill display
+;	ldaa #$0f
+;	ldab	#5*7+1
+;	ldx #DISPLAYBUF2
+;.loop	
+;	staa $0,x
+;	adda #$10
+;	oraa #$0f
+;	inx
+;	decb
+;	bne .loop
+;
+;
+;;.brek bra .brek 
+;
+;mainloop:
+;
+;
+;
+;
+;
+;
+;
+;; push lamps
+;; 0-3 = index
+;; 4-7 = lampdata
+;; strobe1 = u10cb2
+;; Fc clear index c
+;; dF set data d on index c
+;; can it be combined ?
+;
+;; 14514
+;; inhibit=1 all outputs 0 on strobe
+;; inhibit=0 address 1 on strobe
+;
+;lamptest:
+;	ldaa PIAU10 + CRA
+;	oraa	#$4	; select data
+;	;lda #$04
+;	staa PIAU10 + CRA
+;
+;	ldab #$f0 	;start at lamp address 0
+;	ldx #LAMPS
+;	
+;.lamploop
+;;strobe
+;	; set channel and clear all 
+;	stab PIAU10 + DATAA
+;	jsr lampstrobe	; strobe lamp data
+;	ldaa $0,X	; data in high, F in low
+;	; and/ora address ?
+;	staa PIAU10 + DATAA	; push lampdata 0=on
+;	jsr lampstrobe	; strobe lampdata
+;	inx
+;	incb
+;	bne .lamploop
+;	
+;; display loop
+;
+;	ldaa #$34
+;	staa PIAU10 + CRA	; displaystrobe
+;	staa PIAU11 + CRA	; lampstrobe 2
+;	staa PIAU10 + CRB	; lampstrobe 1
+;	
+;	ldx #DISPLAYBUF2
+;	ldb	#2
+;.displayloop1
+;	ldaa #$34			; 
+;	staa PIAU10 + CRA	; displaystrobe CA2=0
+;	
+;	tba
+;	oraa #$1	; strobe 5
+;	staa PIAU11 + DATAA
+;	
+;	ldaa 0,X			;display 1
+;	anda	#$fe
+;	staa PIAU10 + DATAA
+;	
+;	ldaa 7,X			;display 2
+;	anda	#$fd
+;	staa PIAU10 + DATAA
+;
+;	ldaa 14,X			;display 3
+;	anda	#$fb
+;	staa PIAU10 + DATAA
+;	
+;	ldaa 21,X			;display 4
+;	anda	#$f7
+;	staa PIAU10 + DATAA
+;
+;	;display 5
+;	stab PIAU11 + DATAA	
+;	ldaa 28,X			;display 5
+;	staa PIAU10 + DATAA
+;
+;
+;	ldaa #$3c
+;	staa PIAU10 + CRA	; displaystrobe CA2=1
+;
+;	inx
+;	aslb
+;	bne .displayloop1
+;
+;
+;	
+;	jmp mainloop
+;	jmp lamptest
+;.brek bra .brek 
+;	
+	
+
+
+
+;	ldaa #$50	; data
+;	staa TEMP1
+;.uloop
+;	ldab #$f	;index
+;.lloop	
+;	ldx #1000
+;	jsr xwait
+;	
+;	tba
+;	; strobe
+;	oraa TEMP1
+;	staa PIAU10 + DATAA
+;	
+;	ldaa PIAU10 + CRB
+;	oraa	#$38
+;	staa PIAU10 + CRB
+;	oraa	#$30
+;	anda #$F7
+;	staa PIAU10 + CRB
+;	
+;	decb
+;	bne .lloop
+;	ldaa TEMP1
+;	eora #$f0
+;	anda #$f0
+;	staa TEMP1
+;	bra .uloop
+;
+;
+;BREAK: bra BREAK
+
+
+;
+;
+;; CRA
+;;   7   |   6   |  5 4 3   |   2  | 1 0
+;; IRQA1 | IRQA2 | CA2 CTRL | DDRA | CA1
+;ONLYBLINK:
+;	; select DDR
+;	CLR		PIAU10 + CRA
+;	CLR		PIAU10 + CRB
+;	CLR		PIAU11 + CRA
+;	CLR		PIAU11 + CRB
+;
+;	; FF is all ports output exepct U10-B
+;	ldaa	#$FF
+;	STAA	PIAU10 + DDRA ;switch colum + DISPLAY_SEGMENT+ DISPLAY LATCH
+;	CLR		PIAU10 + DDRB ;switch return row
+;	STAA	PIAU11 + DDRA ; DISPLAY LATCH+DISPLAY GIGIT
+;	STAA	PIAU11 + DDRB ; SOUND + SOLENOIDS
+;
+;	; 4 = select data register
+;	ldaa	#$04
+;	STAA	PIAU10 + CRA
+;	STAA	PIAU10 + CRB
+;	STAA	PIAU11 + CRA
+;	STAA	PIAU11 + CRB
+;	
+;	; clear all outputs
+;	ldab	#$ff
+;	tba
+;
+;BLINKLOOP:
+;	tba
+;	STAA	PIAU10 + DATAA
+;;	STAA	PIAU10 + DATAB
+;	STAA	PIAU11 + DATAA
+;	STAA	PIAU11 + DATAB
+;	decb	
+;
+;
+;	;CA2/CB2 output and follow (bit3=data)
+;	ldaa	#$30
+;	STAA	PIAU10 + CRA
+;	STAA	PIAU10 + CRB
+;	STAA	PIAU11 + CRA
+;	STAA	PIAU11 + CRB
+;
+;; 512kHz int, 8cycles DELAY= 16ns per loop
+;; 0.5s / 0.000016 = 31250 times
+;
+;		LDX		#31250
+;DELAY0b:	DEX
+;		BNE DELAY0b
+;		
+;		
+;			;CA2/CB2 output and follow (bit3=data)
+;	ldaa	#$38
+;	STAA	PIAU10 + CRA
+;	STAA	PIAU10 + CRB
+;	STAA	PIAU11 + CRA
+;	STAA	PIAU11 + CRB
+;
+;; 512kHz int, 8cycles DELAY= 16ns per loop
+;; 0.5s / 0.000016 = 31250 times
+;
+;		LDX		#31250
+;DELAY0a:	DEX
+;		BNE DELAY0a
+;		
+;		
+;		
+;		
+;		
+;		BRA BLINKLOOP
+;		
+IRQ:
+SWI:
+
+	JMP START
+
+
+NMI:
+
+
+;
+; set RAM to 01010101
+
+
+
+
+;	staa	RAMU7;
+;	ldaa	#$00
+;	staa	RAMU7 & ~(1<<10)
+;	staa	RAMU7 & ~(1<<9)
+;	staa	RAMU7 & ~(1<<8)
+;	staa	RAMU7 & ~(1<<7)
+;	staa	RAMU7 & ~(1<<6)
+;	staa	RAMU7 & ~(1<<5)
+;	staa	RAMU7 & ~(1<<4)
+;	staa	RAMU7 & ~(1<<3)
+;	staa	RAMU7 & ~(1<<2)
+;	staa	RAMU7 & ~(1<<1)
+;	staa	RAMU7 & ~(1<<0)
+
+; check if 7ff is still 01010101
+;	ldaa	RAMU7
+;	suba	#$55
+;	bne	MEMTEST55
+;
+; set 7ff to 10101010
+; clear all variants with one cleared address bit
+;MEMTESTAA:
+;	ldaa	#$AA
+;	staa	RAMU7
+;	
+;	ldaa	#$00
+;	staa	RAMU7 & ~(1<<10)
+;	staa	RAMU7 & ~(1<<9)
+;	staa	RAMU7 & ~(1<<8)
+;	staa	RAMU7 & ~(1<<7)
+;	staa	RAMU7 & ~(1<<6)
+;	staa	RAMU7 & ~(1<<5)
+;	staa	RAMU7 & ~(1<<4)
+;	staa	RAMU7 & ~(1<<3)
+;	staa	RAMU7 & ~(1<<2)
+;	staa	RAMU7 & ~(1<<1)
+;	staa	RAMU7 & ~(1<<0)
+;
+;	ldaa	RAMU7
+;	suba	#$AA
+;	bne	MEMTESTAA
+	JMP START
+
+		
+
+VECTOR:
+; VECTOR table;
+	org $5FF8
+; IRQ vector
+	dw 	IRQ
+; SWI vector
+	dw 	SWI
+; NMI vector
+	dw 	NMI
+; reset vector
+	dw 	START
