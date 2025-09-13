@@ -1,5 +1,37 @@
 # Pinball testrom
 
+## MPU35-V3
+
+Test a MPU35 board and read serial output with the status on J4-10 (solenoid bank/select)
+
+When the clock is near 520kHz then it should work with 19200 8n1.
+Connect a USB-UART to ground and J4-10 to RX.
+
+The test loops if successfull. FAIL always points to the last message.
+
+This is a work in progress and at the moment it tests:
+- PIA U11
+- PIA U10
+- RAM U7
+- RAM U8
+- ROM U1 ( u1_mpu35_1000_81.716 )
+- ROM U2 ( u2_mpu35_5000_150.716 )
+- Show dipswitch state (no fail)
+- Display interrupt generator
+- Zero crossing interrupt (soft fail)
+
+2bdone:
+- arduino to test edge pins (23017?)
+- arduino to create zero crossing
+- arduino to press NMI/Self test switch
+- auto detect clock speed (needs divider)
+- display on arduino to make it standalone
+
+
+## MPU35-V2
+
+Blink lights and show data on displays
+
 ## V1
 Inspired by the work of Leon Borré I started my own testrom because I wanted some extra tests.
 

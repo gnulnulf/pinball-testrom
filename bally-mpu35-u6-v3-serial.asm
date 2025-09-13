@@ -51,6 +51,8 @@ DIP25	rmb 1
 SWITCH	rmb 8
 UARTTMP rmb 1
 UARTAX	rmb 2
+DISPLAYCOUNT rmb 2
+ZEROCOUNT rmb 2
 BINTEMP rmb 1
 
 
@@ -422,6 +424,8 @@ HELLO_STR: db "NFV MPU35 testrom",10
 			db	0
 U8_STR: db "RAM U08",10,0
 DIP_STR: db "Dipswitches:",10,0
+DISPINT_STR: db "Display interrupt:",10,0
+ZEROCROSS_STR: db "Zero crossing interrupt:",10,0
 FAIL_STR: db 10,"FAIL",10,0
 OK_STR: db 10,"Board seems OK",10,0
 HWINIT_STR: db "Hardware init",10,0
@@ -464,16 +468,20 @@ TXa2:
 	JMP SPXA_UART_TX
 TXa3:
 
-	ldaa #'5'
+	ldaa #'3'
 	lds	#TXa4
 	JMP SPXA_UART_TX
 TXa4:
 
-	ldaa #$0a
+	ldaa #'5'
 	lds	#TXa5
 	JMP SPXA_UART_TX
 TXa5:
 
+	ldaa #$0a
+	lds	#TXa6
+	JMP SPXA_UART_TX
+TXa6:
 
 ; -------------------------------------------
 ; U11 PIA pretest
@@ -1131,12 +1139,14 @@ U8MEMTESTAF:
 ; -------------------------------------------
 	
 
-	
+	ldx	#DIP_STR
+	jsr uart_tx_x_string
 
 ; get dipswitches
 ; inactive
 ; CB2=0
 ; U10-A5,6,7=0
+
 
 
 	
@@ -1145,47 +1155,59 @@ U8MEMTESTAF:
 	ldaa  PIAU10 + CRA
 	anda	#~($04)
 	staa  PIAU10 + CRA
+	
+	ldab #$ff
+	stab PIAU10 + DDRA	; all switch strobes output
+	oraa #$4
+	staa  PIAU10 + CRA
 
 	clr PIAU10 + DATAA	; all switch strobes off 
 	
-	;nop
 	
 	
+; get 25-32	
 	; CB2 on , switchstrobe DIP25-32 off
 	ldaa  PIAU10 + CRB
 	oraa	#$38+$04	; CB2 high sel DATA
 ;	anda	#~($04) ; sel DDR
 	staa  PIAU10 + CRB
-;	ldaa #$3c	
-	;staa PIAU10 + CRB
-	;nop
 	ldaa PIAU10 + DATAB	; switchdata
 	staa DIP25
-
 
 	ldaa  PIAU10 + CRB
 	oraa	#$04	; sel DATA
 	anda	#~($08) ; CB2 low
 	staa  PIAU10 + CRB
 
+
+
+; 	ldaa $4000 breakpoints, BPR 4000
+; get 17-24
 	ldaa #$80
 	staa PIAU10 + DATAA	; switchprobe dip17
-	;nop
 	ldaa PIAU10 + DATAB	; switchdata
 	staa DIP17
-	
+
+
+; get 9-16
+
 	ldaa #$40
 	staa PIAU10 + DATAA	; switchprobe dip9
 	;nop
 	ldaa PIAU10 + DATAB	; switchdata
 	staa DIP9
 	
+; get 1-8
 	ldaa #$20
 	staa PIAU10 + DATAA	; switchprobe dip1
 	;nop
 	ldaa PIAU10 + DATAB	; switchdata
 	staa DIP1
 
+
+	clr PIAU10 + DATAA	; clear switch strobes
+
+; show binary
 	ldaa DIP1
 	jsr uart_tx_bin
 
@@ -1261,12 +1283,121 @@ ROMU2_LOOP
 	bne ROMU2_LOOP
 	
 ; -------------------------------------------
+; test_display_interrupt requency
+; -------------------------------------------
+		
+test_display_int:
+	ldx	#DISPINT_STR
+	jsr uart_tx_x_string
+
+	clr DISPLAYCOUNT
+	clr DISPLAYCOUNT+1
+	ldb PIAU11+CRA
+	orab #$1	; enable interrupt A
+	stab PIAU11+CRA
+	cli
+.loopb:
+
+; 500000c/s * 0,25s = 125000c 
+; loopcount = (125000-3)/8
+
+	ldx #15324	;3 
+.loopx
+	dex			;  4
+	bne .loopx	;  4
+
+	sei	; and disable interrupts
+	ldb PIAU11+CRA
+	andb #~($3)	; disable interrupt A
+	stab PIAU11+CRA
+	
+
+	; DISPLAYCLOUNT = 328Hz/4 = 82 = $52
+	; min 300Hz = 75
+	; max 400Hz = 100
+
+	ldaa DISPLAYCOUNT
+	jsr uart_tx_bin
+	ldaa #10
+	jsr uart_tx_a
+
+	ldaa #75
+	cmpa DISPLAYCOUNT
+	bls	.OK
+	jmp	SPX_FAIL
+.OK
+
+	ldaa #100
+	cmpa DISPLAYCOUNT
+	bgt	.OK2
+	jmp	SPX_FAIL
+.OK2
+
+; -------------------------------------------
+; test zero crossing input
+; -------------------------------------------
+		
+test_zero_int:
+	ldx	#ZEROCROSS_STR
+	jsr uart_tx_x_string
+
+	clr ZEROCOUNT
+	clr ZEROCOUNT+1
+	ldb PIAU10+CRB
+	orab #$1	; enable interrupt B
+	stab PIAU10+CRB
+	cli
+.loopb:
+
+; 500000c/s * 0,25s = 125000c 
+; loopcount = (125000-3)/8
+
+
+	ldx #15324	;3
+.loopx
+	dex			;  4
+	bne .loopx	;  4
+
+	sei	; and disable interrupts
+	ldb PIAU10+CRB
+	andb #~($3)	; disable interrupt B
+	stab PIAU10+CRB	
+
+	; DISPLAYCLOUNT = 100Hz/4 = 25
+	; min 80Hz = 20
+	; max 120Hz = 30
+
+	ldaa ZEROCOUNT
+	jsr uart_tx_bin
+	ldaa #10
+	jsr uart_tx_a
+
+	ldaa #20
+	cmpa ZEROCOUNT
+	bls	.OK
+	;jmp	SPX_FAIL
+	ldx	#FAIL_STR
+	jsr uart_tx_x_string
+.OK
+
+	ldaa #30
+	cmpa ZEROCOUNT
+	bgt	.OK2
+	;jmp	SPX_FAIL
+	ldx	#FAIL_STR
+	jsr uart_tx_x_string
+.OK2
+
+	
+
+
+; -------------------------------------------
 ; END TEST
 ; -------------------------------------------
+	ldx	#OK_STR
+	jsr uart_tx_x_string
 	
-	
-	
-	
+; some happy blinking		
 	ldb	#16
 .loop:
 	jsr ledon
@@ -1278,9 +1409,6 @@ ROMU2_LOOP
 	decb
 	bne .loop
 	
-	
-	ldx	#OK_STR
-	jsr uart_tx_x_string
 	
 	JMP START
 	
@@ -1560,6 +1688,43 @@ ROMU2_LOOP
 ;		BRA BLINKLOOP
 ;		
 IRQ:
+	SEI
+	
+; get display interrupt
+	ldaa PIAU11+CRA
+	tab			; savestate 
+	anda #~($40) ; IRQA-flag
+	beq	.noirqa
+	inc	DISPLAYCOUNT
+	bcc	.noc
+	inc	DISPLAYCOUNT+1
+.noc
+	oraa #$04
+	staa PIAU11+CRA
+	ldaa PIAU11+DATAA
+
+	stab PIAU11+CRA
+.noirqa:
+
+
+; get zero crossing interrupt
+	ldaa PIAU10+CRB
+	tab			; savestate 
+	anda #~($40) ; IRQA-flag
+	beq	.znoirqa
+	inc	ZEROCOUNT
+	bcc	.znoc
+	inc	ZEROCOUNT+1
+.znoc
+	oraa #$04
+	staa PIAU10+CRB
+	ldaa PIAU10+DATAB
+
+	stab PIAU10+CRB
+.znoirqa:
+
+
+	RTI
 SWI:
 
 	JMP START
