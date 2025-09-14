@@ -48,7 +48,7 @@ DIP9	rmb 1
 DIP17	rmb 1
 DIP25	rmb 1
 ;DISPLAYBUF1 rmb 5*7	; byte per char for now
-SWITCH	rmb 8
+;SWITCH	rmb 8
 UARTTMP rmb 1
 UARTAX	rmb 2
 DISPLAYCOUNT rmb 2
@@ -106,6 +106,28 @@ RAMU8SIZE	equ $100
 ; PIAU10_CB2 S25-32 + LAMPSTROBE1
 ; PIAU11_CA2 diagnostic led + LAMPSTROBE2
 ; PIAU11_CB2 SOLENOID/SOUNDSELECT
+
+; ****************************************************
+; * DATA
+; ****************************************************
+HELLO_STR: db "NFV MPU35 testrom",10
+			db "(c)2025 Arco van Geest",10
+			db "version: 2025091402",10
+			db	0
+U8_STR: db "RAM U08",10,0
+DIP_STR: db "Dipswitches:",10,0
+DISPINT_STR: db "Display interrupt (300-400Hz):",10,0
+ZEROCROSS_STR: db "Zero crossing interrupt (80-120Hz):",10,0
+FAIL_STR: db 10,"FAIL",10,0
+OK_STR: db 10,"Board seems OK",10,0
+HWINIT_STR: db "Hardware init",10,0
+S55_STR: db "55",10,0
+SAF_STR: db "AF",10,0
+S5F_STR: db "5F",10,0
+INC_STR: db "INC",10,0
+U1_STR: db "ROM U01 - $1000",10,0
+U2_STR: db "ROM U02 - $5000",10,0
+
 
 
 ; ****************************************************
@@ -416,26 +438,6 @@ fail:
 	ldx	#FAIL_STR
 	bsr uart_tx_x_string
 	.HANGLOOP:	bne	.HANGLOOP
-; ****************************************************
-; * DATA
-; ****************************************************
-HELLO_STR: db "NFV MPU35 testrom",10
-			db "(c)2025 Arco van Geest",10
-			db	0
-U8_STR: db "RAM U08",10,0
-DIP_STR: db "Dipswitches:",10,0
-DISPINT_STR: db "Display interrupt:",10,0
-ZEROCROSS_STR: db "Zero crossing interrupt:",10,0
-FAIL_STR: db 10,"FAIL",10,0
-OK_STR: db 10,"Board seems OK",10,0
-HWINIT_STR: db "Hardware init",10,0
-S55_STR: db "55",10,0
-SAF_STR: db "AF",10,0
-S5F_STR: db "5F",10,0
-INC_STR: db "INC",10,0
-U1_STR: db "ROM U01 - $1000",10,0
-U2_STR: db "ROM U02 - $5000",10,0
-
 
 ; ****************************************************
 ; * START
@@ -443,6 +445,35 @@ U2_STR: db "ROM U02 - $5000",10,0
 
 START:
 	SEI
+
+START_HARDWARE_INIT:
+; -------------------------------------------
+; Hardware IO init
+; -------------------------------------------	
+	;ldx	#HWINIT_STR no stack yet
+	;jsr uart_tx_x_string
+	
+
+	; select DDR
+	CLR		PIAU10 + CRA
+	CLR		PIAU10 + CRB
+	CLR		PIAU11 + CRA
+	CLR		PIAU11 + CRB
+
+	; FF is all ports output exepct U10-B
+	ldaa	#$FF
+	STAA	PIAU10 + DDRA ;switch colum + DISPLAY_SEGMENT+ DISPLAY LATCH
+	CLR		PIAU10 + DDRB ;switch return row
+	STAA	PIAU11 + DDRA ; DISPLAY LATCH+DISPLAY GIGIT
+	STAA	PIAU11 + DDRB ; SOUND + SOLENOIDS
+
+	; 4 = select data register
+	ldaa	#$04
+	STAA	PIAU10 + CRA
+	STAA	PIAU10 + CRB
+	STAA	PIAU11 + CRA
+	STAA	PIAU11 + CRB
+
 	; try to turn on led
 	CLR		PIAU11 + CRA
 	ldaa	#$38	; led on
@@ -946,38 +977,6 @@ TESTU7OK:
 	jsr uart_tx_x_string
 
 ; -------------------------------------------
-; Hardware IO init
-; -------------------------------------------	
-	ldx	#HWINIT_STR
-	jsr uart_tx_x_string
-	
-START_HARDWARE_INIT:
-	; select DDR
-	CLR		PIAU10 + CRA
-	CLR		PIAU10 + CRB
-	CLR		PIAU11 + CRA
-;	CLR		PIAU11 + CRB
-
-	; FF is all ports output exepct U10-B
-	ldaa	#$FF
-	STAA	PIAU10 + DDRA ;switch colum + DISPLAY_SEGMENT+ DISPLAY LATCH
-	CLR		PIAU10 + DDRB ;switch return row
-	STAA	PIAU11 + DDRA ; DISPLAY LATCH+DISPLAY GIGIT
-;	STAA	PIAU11 + DDRB ; SOUND + SOLENOIDS
-
-	; 4 = select data register
-	ldaa	#$04
-	STAA	PIAU10 + CRA
-	STAA	PIAU10 + CRB
-	STAA	PIAU11 + CRA
-;	STAA	PIAU11 + CRB
-
-
-
-
-	
-
-; -------------------------------------------
 ; U8 5101
 ; -------------------------------------------
 
@@ -1070,12 +1069,8 @@ U8MEMTESTINC:
 	decb
 	bne 	.U8LOOPci
 
-
 	ldx	#S5F_STR
 	jsr uart_tx_x_string
-
-
-;	staa $2
 
 U8MEMTEST5F:
 ; fill $5F
@@ -1180,6 +1175,12 @@ U8MEMTESTAF:
 	staa  PIAU10 + CRB
 
 
+	; set PIA10A to DATAA
+	ldaa  PIAU10 + CRA
+	oraa	#$04	; sel DATA
+	staa  PIAU10 + CRA
+
+
 
 ; 	ldaa $4000 breakpoints, BPR 4000
 ; get 17-24
@@ -1232,7 +1233,6 @@ U8MEMTESTAF:
 	ldaa #10
 	jsr uart_tx_a
 
-	LDAA $5000 ; for breakpoint bpr 5000 5000
 ; -------------------------------------------
 ; ROM U1 Test
 ; -------------------------------------------
@@ -1240,24 +1240,23 @@ U8MEMTESTAF:
 	ldx #U1_STR
 	jsr uart_tx_x_string
 
+;	ldaa $4000
 	lda #81		; $1000 % 251 +1
 	ldx #$1000
 ROMU1_LOOP
 	cmpa 0,x
-	beq	.OK
+	beq	.OK1
 	jmp	SPX_FAIL
-.OK
+.OK1
 	inca
 	inx
 	cmpa #253
-	bne	.nowrap
+	bne	.nowrap1
 	ldaa #1
-.nowrap
+.nowrap1
 	cpx #$1800
 	bne ROMU1_LOOP
 	
-
-
 ; -------------------------------------------
 ; ROM U2 Test
 ; -------------------------------------------
@@ -1270,15 +1269,15 @@ ROMU1_LOOP
 
 ROMU2_LOOP
 	cmpa 0,x
-	beq	.OK
+	beq	.OK2
 	jmp	SPX_FAIL
-.OK
+.OK2
 	inca
 	inx
 	cmpa #253
-	bne	.nowrap
+	bne	.nowrap2
 	ldaa #1
-.nowrap
+.nowrap2
 	cpx #$5800
 	bne ROMU2_LOOP
 	
@@ -1312,6 +1311,7 @@ test_display_int:
 	stab PIAU11+CRA
 	
 
+;	ldaa $4000
 	; DISPLAYCLOUNT = 328Hz/4 = 82 = $52
 	; min 300Hz = 75
 	; max 400Hz = 100
@@ -1323,15 +1323,19 @@ test_display_int:
 
 	ldaa #75
 	cmpa DISPLAYCOUNT
-	bls	.OK
-	jmp	SPX_FAIL
-.OK
+	bls	.OKd1
+	;jmp	SPX_FAIL
+		ldx	#FAIL_STR
+	jsr uart_tx_x_string
+.OKd1
 
 	ldaa #100
 	cmpa DISPLAYCOUNT
-	bgt	.OK2
-	jmp	SPX_FAIL
-.OK2
+	bgt	.OKd2
+	;jmp	SPX_FAIL
+		ldx	#FAIL_STR
+	jsr uart_tx_x_string
+.OKd2
 
 ; -------------------------------------------
 ; test zero crossing input
@@ -1399,7 +1403,7 @@ test_zero_int:
 	
 ; some happy blinking		
 	ldb	#16
-.loop:
+.loopok:
 	jsr ledon
 	ldx #5120
 	jsr xwait
@@ -1407,7 +1411,7 @@ test_zero_int:
 	ldx #5120
 	jsr xwait
 	decb
-	bne .loop
+	bne .loopok
 	
 	
 	JMP START
