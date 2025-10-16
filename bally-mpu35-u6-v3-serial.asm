@@ -120,20 +120,20 @@ RAMU8SIZE	equ $100
 ; * DATA
 ; ****************************************************
 
-U8_STR: db "RAM U08",10,0
-DIP_STR: db "Dipswitches:",10,0
-DISPINT_STR: db "Display interrupt (300-400Hz):",10,0
-ZEROCROSS_STR: db "Zero crossing interrupt (80-120Hz):",10,0
-;FAIL_STR: db 10,"FAIL",10,0
-SOFTFAIL_STR: db 10,"SOFT FAIL",10,0
-OK_STR: db 10,"Board seems OK",10,0
-HWINIT_STR: db "Hardware init",10,0
-S55_STR: db "55",10,0
-SAF_STR: db "AF",10,0
-S5F_STR: db "5F",10,0
-INC_STR: db "INC",10,0
-U1_STR: db "ROM U01 - $1000",10,0
-U2_STR: db "ROM U02 - $5000",10,0
+U8_STR: db "RAM U08",13,10,0
+DIP_STR: db "Dipswitches:",13,10,0
+DISPINT_STR: db "Display interrupt (300-400Hz):",13,10,0
+ZEROCROSS_STR: db "Zero crossing interrupt (80-120Hz):",13,10,0
+;FAIL_STR: db 10,"FAIL",13,10,0
+SOFTFAIL_STR: db 10,"SOFT FAIL",13,10,0
+OK_STR: db 10,"Board seems OK",13,10,0
+HWINIT_STR: db "Hardware init",13,10,0
+S55_STR: db "55",13,10,0
+SAF_STR: db "AF",13,10,0
+S5F_STR: db "5F",13,10,0
+INC_STR: db "INC",13,10,0
+U1_STR: db "ROM U01 - $1000",13,10,0
+U2_STR: db "ROM U02 - $5000",13,10,0
 HEX_STR: db "0123456789ABCDEF"
 
 
@@ -256,7 +256,7 @@ SPX_FAIL:
 
 	lds #FAIL_STR
 	jmp	SPXA_UART_PC_STR
-FAIL_STR	dc.b 10,"FAIL",10,0
+FAIL_STR	dc.b 10,"FAIL",13,10,0
 .HANGLOOP:	bne	.HANGLOOP
 
 ; ****************************************************
@@ -415,13 +415,27 @@ uart_tx_hex:
 	staa PRINTHEX_L
 	
 	ldx #HEX_STR
-	;ldaa PRINTHEX_H
-	ldaa PRINTHEX_H,X
+	ldaa PRINTHEX_H
+.HINCX
+	beq .HINCXDONE
+	inx
+	deca
+	bra .HINCX
+	
+.HINCXDONE	
+	ldaa 0,X
 	bsr uart_tx_a
 
 	ldx #HEX_STR
-	;ldaa PRINTHEX_L
-	ldaa PRINTHEX_L,X
+	ldaa PRINTHEX_L
+.LINCX
+	beq .LINCXDONE
+	inx
+	deca
+	bra .LINCX
+	
+.LINCXDONE	
+	ldaa 0,X
 	bsr uart_tx_a
 	
 	
@@ -451,7 +465,7 @@ uart_tx_dec:
 	staa DECTEMP
 	ldx #HEX_STR
 	ldaa DEC100,X
-	bsr uart_tx_a
+	jsr uart_tx_a
 
 	ldaa DECTEMP
 
@@ -533,9 +547,9 @@ START_HARDWARE_INIT:
 	lds #INIT_STR
 	jmp	SPXA_UART_PC_STR
 INIT_STR	
-HELLO_STR: db "NFV MPU35 testrom",10
-			db "(c)2025 Arco van Geest",10
-			db "version: ","2025092701",10
+HELLO_STR: db "NFV MPU35 testrom",13,10
+			db "(c)2025 Arco van Geest",13,10
+			db "version: ","2025101601",13,10
 			db	0
 
 ; -------------------------------------------
@@ -569,7 +583,7 @@ TESTU11:
 
 	lds #U11_STR
 	jmp	SPXA_UART_PC_STR
-U11_STR	dc.b "U11",10,0
+U11_STR	dc.b "U11",13,10,0
 
 	
 ; ########################################################
@@ -606,7 +620,7 @@ U11_STR	dc.b "U11",10,0
 TESTU10:
 	lds #U10_STR
 	jmp	SPXA_UART_PC_STR
-U10_STR	dc.b "U10",10,0
+U10_STR	dc.b "U10",13,10,0
 
 	CLR		PIAU10 + CRA
 	CLR		PIAU10 + CRB
@@ -641,7 +655,7 @@ TESTU10OK:
 TESTU7:
 	lds #U7_STR
 	jmp	SPXA_UART_PC_STR
-U7_STR	dc.b "U7",10,0
+U7_STR	dc.b "U7",13,10,0
 
 
 ; D0-7
@@ -760,18 +774,13 @@ TX7:
 	beq	.OK
 	jmp	SPX_FAIL
 .OK
-;.HANGLOOP:	bne	.HANGLOOP
-	ldaa #10
-	lds	#TX9
-	JMP SPXA_UART_TX
-TX9:
-
-
+; crlf in next string
 ; datalines checked
+
 
 	lds #U7_INC_STR
 	jmp	SPXA_UART_PC_STR
-U7_INC_STR	dc.b "Increments",10,0
+U7_INC_STR	dc.b 13,10,"Increments",13,10,0
 	
 
 ; test individual values
@@ -796,7 +805,7 @@ MINCLOOPr:
 
 	lds #U7_55_STR
 	jmp	SPXA_UART_PC_STR
-U7_55_STR	dc.b "0x55",10,0
+U7_55_STR	dc.b "0x55",13,10,0
 
 ; test with all $55
 MEMTEST55:
@@ -822,7 +831,7 @@ M55LOOPa:
 ; test with all $aa
 	lds #U7_AA_STR
 	jmp	SPXA_UART_PC_STR
-U7_AA_STR	dc.b "0xAA",10,0
+U7_AA_STR	dc.b "0xAA",13,10,0
 
 
 MEMTESTAA:
@@ -915,7 +924,8 @@ TESTU7OK:
 	beq	.OK7
 	jmp	SPX_FAIL
 .OK7
-
+	ldaa #13
+	jsr uart_tx_a
 	ldaa #10
 	jsr uart_tx_a
 
@@ -1138,6 +1148,9 @@ U8MEMTESTAF:
 	ldaa DIP25
 	jsr uart_tx_bin
 
+	ldaa #13
+	jsr uart_tx_a
+	
 	ldaa #10
 	jsr uart_tx_a
 
@@ -1226,6 +1239,11 @@ test_display_int:
 
 	ldaa DISPLAYCOUNT
 	jsr uart_tx_hex
+	ldaa DISPLAYCOUNT+1
+	jsr uart_tx_hex
+
+	ldaa #13
+	jsr uart_tx_a
 	ldaa #10
 	jsr uart_tx_a
 
@@ -1244,6 +1262,8 @@ test_display_int:
 		ldx	#FAIL_STR
 	jsr uart_tx_x_string
 .OKd2
+
+	
 
 ; -------------------------------------------
 ; test zero crossing input
@@ -1278,13 +1298,18 @@ test_zero_int:
 	; DISPLAYCLOUNT = 100Hz/4 = 25
 	; min 80Hz = 20
 	; max 120Hz = 30
+	; instable 555 18-40
 
 	ldaa ZEROCOUNT
 	jsr uart_tx_hex
+	ldaa ZEROCOUNT+1
+	jsr uart_tx_hex
+	ldaa #13
+	jsr uart_tx_a
 	ldaa #10
 	jsr uart_tx_a
 
-	ldaa #20
+	ldaa #18
 	cmpa ZEROCOUNT
 	bls	.OK
 	;jmp	SPX_FAIL
@@ -1292,7 +1317,7 @@ test_zero_int:
 	jsr uart_tx_x_string
 .OK
 
-	ldaa #30
+	ldaa #40
 	cmpa ZEROCOUNT
 	bgt	.OK2
 	;jmp	SPX_FAIL
@@ -1605,7 +1630,7 @@ IRQ:
 ; get display interrupt
 	ldaa PIAU11+CRA
 	tab			; savestate 
-	anda #~($40) ; IRQA-flag
+	anda #~($40) ; IRQA1-flag
 	beq	.noirqa
 	inc	DISPLAYCOUNT
 	bcc	.noc
@@ -1622,15 +1647,15 @@ IRQ:
 ; get zero crossing interrupt
 	ldaa PIAU10+CRB
 	tab			; savestate 
-	anda #~($40) ; IRQA-flag
+	anda #~($40) ; IRQB1-flag
 	beq	.znoirqa
 	inc	ZEROCOUNT
 	bcc	.znoc
 	inc	ZEROCOUNT+1
 .znoc
-	oraa #$04
+	oraa #$04		;select data
 	staa PIAU10+CRB
-	ldaa PIAU10+DATAB
+	ldaa PIAU10+DATAB ; read data to clear irq
 
 	stab PIAU10+CRB
 .znoirqa:
